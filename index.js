@@ -8,6 +8,8 @@ const ADMIN_CHAT_IDS = [935264202, 1527919229];
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
+  console.log('SUPABASE_URL:', process.env.SUPABASE_URL);
+  console.log('SUPABASE_ANON_KEY present:', !!process.env.SUPABASE_ANON_KEY);
 );
 
 // 📤 Отправка сообщения
@@ -182,3 +184,4 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`✅ Бот запущен на порту ${PORT}`);
 });
+
