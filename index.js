@@ -2,7 +2,7 @@ const http = require('http');
 const { createClient } = require('@supabase/supabase-js');
 
 // 🔐 Переменные из Render Environment
-const TOKEN = process.env.BOT_TOKEN;
+const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const ADMIN_CHAT_IDS = [935264202, 1527919229];
 
 // 🛡️ Инициализация Supabase с защитой от ошибок
@@ -198,6 +198,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Бот запущен на порту ${PORT}`);
 });
+
 
 
 
