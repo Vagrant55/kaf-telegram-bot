@@ -2,31 +2,31 @@ const http = require('http');
 const { createClient } = require('@supabase/supabase-js');
 
 // 🔐 Переменные из Render Environment
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TOKEN = process.env.BOT_TOKEN;
 const ADMIN_CHAT_IDS = [935264202, 1527919229];
 
 // 🛡️ Инициализация Supabase с защитой от ошибок
 let supabase = null;
 
 try {
+  const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = (process.env.SUPABASE_ANON_KEY || '').trim();
+
+  if (!supabaseUrl) {
+    throw new Error('SUPABASE_URL не задан');
+  }
   if (!supabaseKey) {
     throw new Error('SUPABASE_ANON_KEY не задан или пуст');
   }
 
-  supabase = createClient(
-    process.env.SUPABASE_URL,
-    supabaseKey
-  );
-
+  supabase = createClient(supabaseUrl, supabaseKey);
   console.log('✅ Supabase успешно инициализирован');
-
 } catch (err) {
   console.error('❌ Ошибка инициализации Supabase:', err.message);
-  process.exit(1); // Завершаем процесс, чтобы не запускать бота без базы данных
+  process.exit(1);
 }
 
-// 📤 Отправка сообщения
+// 📤 Отправка сообщения в Telegram
 async function sendText(chatId, text, replyMarkup = null) {
   if (!TOKEN) {
     console.error('❌ BOT_TOKEN не задан в Render Environment Variables');
@@ -34,11 +34,15 @@ async function sendText(chatId, text, replyMarkup = null) {
   }
   try {
     const url = `https://api.telegram.org/bot${TOKEN}/sendMessage`;
-    await fetch(url, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text, reply_markup: replyMarkup }),
     });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Telegram API ошибка:', errorText);
+    }
   } catch (err) {
     console.error('💥 Ошибка отправки в Telegram:', err.message);
   }
@@ -46,6 +50,7 @@ async function sendText(chatId, text, replyMarkup = null) {
 
 // 💾 Сохранение сотрудника
 async function saveEmployee(chatId, name, type) {
+  if (!supabase) return;
   if (typeof chatId !== 'number' || isNaN(chatId) || chatId <= 0) return;
   if (!name || typeof name !== 'string') name = 'Аноним';
   if (!['military', 'civil'].includes(type)) return;
@@ -61,12 +66,17 @@ async function saveEmployee(chatId, name, type) {
 
 // 📢 Рассылка
 async function sendBroadcast(text, type) {
+  if (!supabase) return { sent: 0 };
   try {
     let query = supabase.from('employees').select('chat_id');
     if (type !== 'all') {
       query = query.eq('type', type);
     }
-    const { data } = await query;
+    const { data, error } = await query;
+    if (error) {
+      console.error('❌ Supabase select error:', error);
+      return { sent: 0 };
+    }
 
     let sent = 0;
     for (const { chat_id } of data || []) {
@@ -84,22 +94,21 @@ async function sendBroadcast(text, type) {
 async function handleRequest(body) {
   const { message, callback_query } = body;
 
-  // 📨 Обработка текста
   if (message?.text) {
     const chatId = Number(message.chat.id);
     const text = message.text.trim();
 
     // Админ вводит текст рассылки
-    if (ADMIN_CHAT_IDS.includes(chatId)) {
-      const session = await supabase
+    if (ADMIN_CHAT_IDS.includes(chatId) && supabase) {
+      const { data: session, error } = await supabase
         .from('admin_sessions')
         .select('awaiting_broadcast_type')
         .eq('chat_id', chatId)
         .single();
 
-      if (session?.data?.awaiting_broadcast_type) {
+      if (!error && session?.awaiting_broadcast_type) {
         await supabase.from('admin_sessions').delete().eq('chat_id', chatId);
-        const result = await sendBroadcast(text, session.data.awaiting_broadcast_type);
+        const result = await sendBroadcast(text, session.awaiting_broadcast_type);
         await sendText(chatId, `✅ Рассылка отправлена!\n📤 Получателей: ${result.sent}`);
         return;
       }
@@ -130,7 +139,6 @@ async function handleRequest(body) {
     }
   }
 
-  // 🖱️ Обработка кнопок
   if (callback_query) {
     const callbackId = callback_query.id;
     const chatId = Number(callback_query.message?.chat?.id) || callback_query.from.id;
@@ -138,7 +146,7 @@ async function handleRequest(body) {
     const data = callback_query.data;
     const name = callback_query.from.first_name || callback_query.from.username || 'Аноним';
 
-    // Убираем "часики"
+    // ✅ Ответ на callback (убрать часики)
     try {
       await fetch(`https://api.telegram.org/bot${TOKEN}/answerCallbackQuery`, {
         method: 'POST',
@@ -146,10 +154,10 @@ async function handleRequest(body) {
         body: JSON.stringify({ callback_query_id: callbackId }),
       });
     } catch (e) {
-      console.warn('Не удалось ответить на callback');
+      console.warn('⚠️ Не удалось ответить на callback');
     }
 
-    // === Выбор типа ===
+    // Выбор типа
     if (['type_military', 'type_civil'].includes(data)) {
       const type = data === 'type_military' ? 'military' : 'civil';
       await saveEmployee(chatId, name, type);
@@ -157,13 +165,15 @@ async function handleRequest(body) {
       return;
     }
 
-    // === Админские кнопки ===
+    // Админские кнопки
     if (ADMIN_CHAT_IDS.includes(userId)) {
       if (['send_all', 'send_military', 'send_civil'].includes(data)) {
         const type = data.replace('send_', '');
-        await supabase
-          .from('admin_sessions')
-          .upsert({ chat_id: userId, awaiting_broadcast_type: type }, { onConflict: 'chat_id' });
+        if (supabase) {
+          await supabase
+            .from('admin_sessions')
+            .upsert({ chat_id: userId, awaiting_broadcast_type: type }, { onConflict: 'chat_id' });
+        }
         const typeMap = { all: 'всем', military: 'военным', civil: 'гражданским' };
         await sendText(userId, `📩 Введите текст рассылки для: ${typeMap[type]}\n(Просто отправьте текст в чат)`);
         return;
@@ -172,34 +182,32 @@ async function handleRequest(body) {
   }
 }
 
-// 🚀 Запуск сервера
-const PORT = process.env.PORT || 3000;
+// 🚀 Запуск HTTP-сервера
+const PORT = process.env.PORT || 10000;
 const server = http.createServer(async (req, res) => {
   if (req.method === 'POST') {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', async () => {
       try {
-        await handleRequest(JSON.parse(body));
+        const json = JSON.parse(body);
+        await handleRequest(json);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
       } catch (err) {
-        console.error('💥 Ошибка обработки запроса:', err);
-        res.writeHead(200);
+        console.error('💥 Ошибка обработки запроса:', err.message);
+        res.writeHead(200); // Telegram требует 200 даже при ошибках
         res.end(JSON.stringify({ ok: true }));
       }
     });
   } else {
-    res.writeHead(200);
+    // Для проверки в браузере
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('✅ Telegram bot is running');
   }
 });
 
+// Слушаем на 0.0.0.0 — обязательно для Render!
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Бот запущен на порту ${PORT}`);
 });
-
-
-
-
-
