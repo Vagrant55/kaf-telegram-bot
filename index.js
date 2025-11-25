@@ -6,7 +6,7 @@ const TOKEN = process.env.BOT_TOKEN;
 const ADMIN_CHAT_IDS = [935264202, 1527919229];
 
 // Проверка и очистка ключа Supabase
-const supabaseKey = (process.env.SUPABASE_ANONE_KEY || '').trim();
+const supabaseKey = (process.env.SUPABASE_ANON_KEY || '').trim();
 if (!supabaseKey) {
   console.error('❌ SUPABASE_ANONE_KEY не задан или пуст. Проверьте переменные окружения в Render.');
   process.exit(1);
@@ -184,5 +184,6 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Бот запущен на порту ${PORT}`);
 });
+
 
 
