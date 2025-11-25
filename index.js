@@ -1,5 +1,5 @@
-import http from 'http';
-import { createClient } from '@supabase/supabase-js';
+const http = require('http');
+const { createClient } = require('@supabase/supabase-js');
 
 // 🔐 Переменные окружения
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -71,8 +71,8 @@ async function handleRequest(body) {
       if (text === '/start') {
         const keyboard = {
           inline_keyboard: [
-            [{ text: '🎖️ Военный', callback_ 'type_military' }],
-            [{ text: '👔 Гражданский', callback_ 'type_civil' }],
+            [{ text: '🎖️ Военный', callback_data: 'type_military' }],
+            [{ text: '👔 Гражданский', callback_data: 'type_civil' }],
           ],
         };
         await sendText(chatId, '👋 Привет! Пожалуйста, выберите ваш тип:', keyboard);
@@ -82,9 +82,9 @@ async function handleRequest(body) {
       if (text === '/menu' && ADMIN_CHAT_IDS.includes(chatId)) {
         const keyboard = {
           inline_keyboard: [
-            [{ text: '📤 Отправить ВСЕМ', callback_ 'send_all' }],
-            [{ text: '🎖️ Только военным', callback_ 'send_military' }],
-            [{ text: '👔 Только гражданским', callback_ 'send_civil' }],
+            [{ text: '📤 Отправить ВСЕМ', callback_data: 'send_all' }],
+            [{ text: '🎖️ Только военным', callback_data: 'send_military' }],
+            [{ text: '👔 Только гражданским', callback_data: 'send_civil' }],
           ],
         };
         await sendText(chatId, '👇 Выберите тип рассылки:', keyboard);
