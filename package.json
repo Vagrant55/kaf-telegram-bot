@@ -1,7 +1,6 @@
 {
   "name": "kaf-telegram-bot",
   "version": "1.0.0",
-  "description": "Telegram bot for KAF",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
