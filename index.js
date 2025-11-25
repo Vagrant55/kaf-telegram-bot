@@ -1,9 +1,9 @@
 import http from 'http';
 import { createClient } from '@supabase/supabase-js';
 
-// 🔐 Настройки (берутся из переменных окружения)
+// 🔐 Переменные окружения
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const ADMIN_CHAT_IDS = [935264202, 1527919229]; // Ваши ID
+const ADMIN_CHAT_IDS = [935264202, 1527919229];
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -40,27 +40,6 @@ async function saveEmployee(chatId, name, type) {
       .upsert({ chat_id: chatId, name, type }, { onConflict: 'chat_id' });
   } catch (err) {
     console.error('💥 Ошибка сохранения в Supabase:', err.message);
-  }
-}
-
-// 📢 Рассылка
-async function sendBroadcast(text, type) {
-  try {
-    let query = supabase.from('employees').select('chat_id');
-    if (type !== 'all') {
-      query = query.eq('type', type);
-    }
-    const { data } = await query;
-
-    let sent = 0;
-    for (const { chat_id } of data || []) {
-      await sendText(chat_id, text);
-      sent++;
-    }
-    return { sent };
-  } catch (err) {
-    console.error('💥 Ошибка рассылки:', err.message);
-    return { sent: 0 };
   }
 }
 
@@ -153,6 +132,27 @@ async function handleRequest(body) {
         return;
       }
     }
+  }
+}
+
+// 📢 Рассылка
+async function sendBroadcast(text, type) {
+  try {
+    let query = supabase.from('employees').select('chat_id');
+    if (type !== 'all') {
+      query = query.eq('type', type);
+    }
+    const { data } = await query;
+
+    let sent = 0;
+    for (const { chat_id } of data || []) {
+      await sendText(chat_id, text);
+      sent++;
+    }
+    return { sent };
+  } catch (err) {
+    console.error('💥 Ошибка рассылки:', err.message);
+    return { sent: 0 };
   }
 }
 
