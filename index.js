@@ -2,13 +2,15 @@ const http = require('http');
 const { createClient } = require('@supabase/supabase-js');
 
 // 🔐 Переменные из Render Environment
-const TOKEN = process.env.BOT_TOKEN; // ← именно так называется в Render
+const TOKEN = process.env.BOT_TOKEN;
 const ADMIN_CHAT_IDS = [935264202, 1527919229];
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANONE_KEY // ← именно так называется в Render (с "E")
-);
+// Проверка и очистка ключа Supabase
+const supabaseKey = (process.env.SUPABASE_ANONE_KEY || '').trim();
+if (!supabaseKey) {
+  console.error('❌ SUPABASE_ANONE_KEY не задан или пуст. Проверьте переменные окружения в Render.');
+  process.exit(1);
+}
 
 // 📤 Отправка сообщения
 async function sendText(chatId, text, replyMarkup = null) {
@@ -182,4 +184,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Бот запущен на порту ${PORT}`);
 });
+
 
