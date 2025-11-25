@@ -12,12 +12,8 @@ try {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = (process.env.SUPABASE_ANON_KEY || '').trim();
 
-  if (!supabaseUrl) {
-    throw new Error('SUPABASE_URL не задан');
-  }
-  if (!supabaseKey) {
-    throw new Error('SUPABASE_ANON_KEY не задан или пуст');
-  }
+  if (!supabaseUrl) throw new Error('SUPABASE_URL не задан');
+  if (!supabaseKey) throw new Error('SUPABASE_ANON_KEY не задан или пуст');
 
   supabase = createClient(supabaseUrl, supabaseKey);
   console.log('✅ Supabase успешно инициализирован');
@@ -26,19 +22,33 @@ try {
   process.exit(1);
 }
 
+if (!TOKEN) {
+  console.error('❌ TELEGRAM_BOT_TOKEN не задан в Render Environment');
+  process.exit(1);
+}
+
 // 📤 Отправка сообщения в Telegram
 async function sendText(chatId, text, replyMarkup = null) {
-  if (!TOKEN) {
-    console.error('❌ BOT_TOKEN не задан в Render Environment Variables');
+  // Защита от некорректного chatId
+  if (typeof chatId !== 'number' || isNaN(chatId) || chatId <= 0) {
+    console.warn('⚠️ Пропуск отправки: некорректный chatId', chatId);
     return;
   }
+
   try {
     const url = `https://api.telegram.org/bot${TOKEN}/sendMessage`;
+    const body = {
+      chat_id: chatId,
+      text,
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {})
+    };
+
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text, reply_markup: replyMarkup }),
+      body: JSON.stringify(body),
     });
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error('❌ Telegram API ошибка:', errorText);
@@ -92,11 +102,15 @@ async function sendBroadcast(text, type) {
 
 // 🧠 Обработчик запросов от Telegram
 async function handleRequest(body) {
+  console.log('📥 Получен запрос:', { hasMessage: !!body.message, hasCallback: !!body.callback_query });
+
   const { message, callback_query } = body;
 
   if (message?.text) {
     const chatId = Number(message.chat.id);
     const text = message.text.trim();
+
+    console.log('📨 Текст:', { chatId, text });
 
     // Админ вводит текст рассылки
     if (ADMIN_CHAT_IDS.includes(chatId) && supabase) {
@@ -121,6 +135,7 @@ async function handleRequest(body) {
             [{ text: '👔 Гражданский', callback_data: 'type_civil' }],
           ],
         };
+        console.log('📤 Отправка клавиатуры /start');
         await sendText(chatId, '👋 Привет! Пожалуйста, выберите ваш тип:', keyboard);
         return;
       }
@@ -133,6 +148,7 @@ async function handleRequest(body) {
             [{ text: '👔 Только гражданским', callback_data: 'send_civil' }],
           ],
         };
+        console.log('📤 Отправка клавиатуры /menu');
         await sendText(chatId, '👇 Выберите тип рассылки:', keyboard);
         return;
       }
@@ -141,12 +157,26 @@ async function handleRequest(body) {
 
   if (callback_query) {
     const callbackId = callback_query.id;
-    const chatId = Number(callback_query.message?.chat?.id) || callback_query.from.id;
     const userId = callback_query.from.id;
     const data = callback_query.data;
     const name = callback_query.from.first_name || callback_query.from.username || 'Аноним';
 
-    // ✅ Ответ на callback (убрать часики)
+    // Получаем chatId: из сообщения или из пользователя
+    let chatId = null;
+    if (callback_query.message?.chat?.id) {
+      chatId = Number(callback_query.message.chat.id);
+    } else {
+      chatId = userId;
+    }
+
+    if (isNaN(chatId)) {
+      console.error('❌ chatId не является числом:', chatId);
+      return;
+    }
+
+    console.log('🖱️ Callback:', { chatId, userId, data });
+
+    // ✅ Обязательно отвечаем на callback
     try {
       await fetch(`https://api.telegram.org/bot${TOKEN}/answerCallbackQuery`, {
         method: 'POST',
@@ -157,7 +187,7 @@ async function handleRequest(body) {
       console.warn('⚠️ Не удалось ответить на callback');
     }
 
-    // Выбор типа
+    // === Выбор типа пользователя ===
     if (['type_military', 'type_civil'].includes(data)) {
       const type = data === 'type_military' ? 'military' : 'civil';
       await saveEmployee(chatId, name, type);
@@ -165,7 +195,7 @@ async function handleRequest(body) {
       return;
     }
 
-    // Админские кнопки
+    // === Админские кнопки рассылки ===
     if (ADMIN_CHAT_IDS.includes(userId)) {
       if (['send_all', 'send_military', 'send_civil'].includes(data)) {
         const type = data.replace('send_', '');
@@ -196,12 +226,11 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ ok: true }));
       } catch (err) {
         console.error('💥 Ошибка обработки запроса:', err.message);
-        res.writeHead(200); // Telegram требует 200 даже при ошибках
+        res.writeHead(200);
         res.end(JSON.stringify({ ok: true }));
       }
     });
   } else {
-    // Для проверки в браузере
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('✅ Telegram bot is running');
   }
@@ -211,4 +240,3 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Бот запущен на порту ${PORT}`);
 });
-
