@@ -5,11 +5,25 @@ const { createClient } = require('@supabase/supabase-js');
 const TOKEN = process.env.BOT_TOKEN;
 const ADMIN_CHAT_IDS = [935264202, 1527919229];
 
-// Проверка и очистка ключа Supabase
-const supabaseKey = (process.env.SUPABASE_ANON_KEY || '').trim();
-if (!supabaseKey) {
-  console.error('❌ SUPABASE_ANONE_KEY не задан или пуст. Проверьте переменные окружения в Render.');
-  process.exit(1);
+// 🛡️ Инициализация Supabase с защитой от ошибок
+let supabase = null;
+
+try {
+  const supabaseKey = (process.env.SUPABASE_ANON_KEY || '').trim();
+  if (!supabaseKey) {
+    throw new Error('SUPABASE_ANON_KEY не задан или пуст');
+  }
+
+  supabase = createClient(
+    process.env.SUPABASE_URL,
+    supabaseKey
+  );
+
+  console.log('✅ Supabase успешно инициализирован');
+
+} catch (err) {
+  console.error('❌ Ошибка инициализации Supabase:', err.message);
+  process.exit(1); // Завершаем процесс, чтобы не запускать бота без базы данных
 }
 
 // 📤 Отправка сообщения
@@ -184,6 +198,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Бот запущен на порту ${PORT}`);
 });
+
 
 
 
