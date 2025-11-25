@@ -1,21 +1,19 @@
 const http = require('http');
 const { createClient } = require('@supabase/supabase-js');
 
-// 🔐 Переменные окружения
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+// 🔐 Переменные из Render Environment
+const TOKEN = process.env.BOT_TOKEN; // ← именно так называется в Render
 const ADMIN_CHAT_IDS = [935264202, 1527919229];
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-  console.log('SUPABASE_URL:', process.env.SUPABASE_URL);
-  console.log('SUPABASE_ANON_KEY present:', !!process.env.SUPABASE_ANON_KEY);
+  process.env.SUPABASE_ANONE_KEY // ← именно так называется в Render (с "E")
 );
 
 // 📤 Отправка сообщения
 async function sendText(chatId, text, replyMarkup = null) {
   if (!TOKEN) {
-    console.error('❌ TELEGRAM_BOT_TOKEN не задан');
+    console.error('❌ BOT_TOKEN не задан в Render Environment Variables');
     return;
   }
   try {
@@ -26,7 +24,7 @@ async function sendText(chatId, text, replyMarkup = null) {
       body: JSON.stringify({ chat_id: chatId, text, reply_markup: replyMarkup }),
     });
   } catch (err) {
-    console.error('💥 Ошибка отправки:', err.message);
+    console.error('💥 Ошибка отправки в Telegram:', err.message);
   }
 }
 
@@ -42,6 +40,27 @@ async function saveEmployee(chatId, name, type) {
       .upsert({ chat_id: chatId, name, type }, { onConflict: 'chat_id' });
   } catch (err) {
     console.error('💥 Ошибка сохранения в Supabase:', err.message);
+  }
+}
+
+// 📢 Рассылка
+async function sendBroadcast(text, type) {
+  try {
+    let query = supabase.from('employees').select('chat_id');
+    if (type !== 'all') {
+      query = query.eq('type', type);
+    }
+    const { data } = await query;
+
+    let sent = 0;
+    for (const { chat_id } of data || []) {
+      await sendText(chat_id, text);
+      sent++;
+    }
+    return { sent };
+  } catch (err) {
+    console.error('💥 Ошибка рассылки:', err.message);
+    return { sent: 0 };
   }
 }
 
@@ -73,8 +92,8 @@ async function handleRequest(body) {
       if (text === '/start') {
         const keyboard = {
           inline_keyboard: [
-            [{ text: '🎖️ Военный', callback_data: 'type_military' }],
-            [{ text: '👔 Гражданский', callback_data: 'type_civil' }],
+            [{ text: '🎖️ Военный', callback_ 'type_military' }],
+            [{ text: '👔 Гражданский', callback_ 'type_civil' }],
           ],
         };
         await sendText(chatId, '👋 Привет! Пожалуйста, выберите ваш тип:', keyboard);
@@ -84,9 +103,9 @@ async function handleRequest(body) {
       if (text === '/menu' && ADMIN_CHAT_IDS.includes(chatId)) {
         const keyboard = {
           inline_keyboard: [
-            [{ text: '📤 Отправить ВСЕМ', callback_data: 'send_all' }],
-            [{ text: '🎖️ Только военным', callback_data: 'send_military' }],
-            [{ text: '👔 Только гражданским', callback_data: 'send_civil' }],
+            [{ text: '📤 Отправить ВСЕМ', callback_ 'send_all' }],
+            [{ text: '🎖️ Только военным', callback_ 'send_military' }],
+            [{ text: '👔 Только гражданским', callback_ 'send_civil' }],
           ],
         };
         await sendText(chatId, '👇 Выберите тип рассылки:', keyboard);
@@ -137,27 +156,6 @@ async function handleRequest(body) {
   }
 }
 
-// 📢 Рассылка
-async function sendBroadcast(text, type) {
-  try {
-    let query = supabase.from('employees').select('chat_id');
-    if (type !== 'all') {
-      query = query.eq('type', type);
-    }
-    const { data } = await query;
-
-    let sent = 0;
-    for (const { chat_id } of data || []) {
-      await sendText(chat_id, text);
-      sent++;
-    }
-    return { sent };
-  } catch (err) {
-    console.error('💥 Ошибка рассылки:', err.message);
-    return { sent: 0 };
-  }
-}
-
 // 🚀 Запуск сервера
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(async (req, res) => {
@@ -170,18 +168,17 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
       } catch (err) {
-        console.error('💥 Ошибка обработки:', err);
+        console.error('💥 Ошибка обработки запроса:', err);
         res.writeHead(200);
         res.end(JSON.stringify({ ok: true }));
       }
     });
   } else {
     res.writeHead(200);
-    res.end('Telegram bot is running ✅');
+    res.end('✅ Telegram bot is running');
   }
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Бот запущен на порту ${PORT}`);
 });
-
